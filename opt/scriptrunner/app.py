@@ -1,236 +1,181 @@
-import os
-import sqlite3
-import json
-import datetime
-from typing import List
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import paramiko
-from cryptography.fernet import Fernet
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+import sqlite3, os, datetime, paramiko
+from werkzeug.utils import secure_filename
 
-APP_DIR = os.path.dirname(__file__)
-DB_PATH = os.path.join(APP_DIR, "scriptrunner.db")
-KEY_DIR = os.path.join(APP_DIR, "keys")
-os.makedirs(KEY_DIR, exist_ok=True)
+app = Flask(__name__)
+CORS(app)
 
-# Encryption key
-KEY_FILE = os.path.join(APP_DIR, "secret.key")
-if not os.path.exists(KEY_FILE):
-    key = Fernet.generate_key()
-    with open(KEY_FILE, "wb") as f:
-        f.write(key)
-else:
-    key = open(KEY_FILE, "rb").read()
-fernet = Fernet(key)
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Initialize DB
+DB_FILE = 'scriptrunner.db'
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# --- Initialize DB ---
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS servers (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT,
-                    host TEXT UNIQUE,
-                    username TEXT,
-                    password_enc TEXT,
-                    keyfile_path TEXT,
-                    created_at TEXT,
-                    os TEXT DEFAULT 'ubuntu',
-                    tags TEXT DEFAULT ''
-                )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS runs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    server_id INTEGER,
-                    command TEXT,
-                    output TEXT,
-                    status TEXT,
-                    created_at TEXT
-                )""")
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS servers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        host TEXT,
+        username TEXT,
+        password_enc TEXT,
+        keyfile_path TEXT,
+        os TEXT DEFAULT 'ubuntu',
+        tags TEXT,
+        created_at TEXT
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        command TEXT,
+        status TEXT,
+        output TEXT,
+        created_at TEXT
+    )''')
     conn.commit()
     conn.close()
 
 init_db()
 
-app = FastAPI(title="ScriptRunner API")
+# --- Routes ---
+@app.route('/')
+def index():
+    return send_from_directory('frontend', 'index.html')
 
-# Mount frontend & static
-app.mount("/static", StaticFiles(directory=os.path.join(APP_DIR, "frontend")), name="static")
+@app.route('/static/<path:path>')
+def serve_static(path):
+    return send_from_directory('static', path)
 
-@app.get("/")
-def serve_index():
-    return FileResponse(os.path.join(APP_DIR, "frontend/index.html"))
+# --- Server API ---
+@app.route('/api/servers/list')
+def list_servers():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM servers ORDER BY id DESC")
+    servers = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return jsonify(servers)
 
-# --- Pydantic Models
-class ServerAdd(BaseModel):
-    name: str
-    host: str
-    username: str
-    password: str = None
-    keyfile_path: str = None
-    os: str = "ubuntu"
-    tags: str = ""
-
-class RunCommand(BaseModel):
-    server_ids: List[int]
-    commands: List[dict]  # [{"os":"ubuntu","cmd":"ls"}]
-    timeout: int = 30
-
-# --- Helper to run SSH command
-def run_ssh_command(host, username, password=None, keyfile=None, command="uptime", timeout=30):
-    output = ""
-    status = "ok"
-    try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        if keyfile:
-            pkey = paramiko.RSAKey.from_private_key_file(keyfile)
-            client.connect(hostname=host, username=username, pkey=pkey, timeout=timeout)
-        else:
-            client.connect(hostname=host, username=username, password=password, timeout=timeout)
-        stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
-        out = stdout.read().decode(errors="ignore")
-        err = stderr.read().decode(errors="ignore")
-        output = out + ("\nERR:\n" + err if err else "")
-        client.close()
-    except Exception as e:
-        output = str(e)
-        status = "error"
-    return status, output
-
-# --- API Endpoints ---
-
-# ✅ Add new server
-@app.post("/api/servers/add")
-async def add_server(
-    name: str = Form(...),
-    host: str = Form(...),
-    username: str = Form(...),
-    os_type: str = Form("ubuntu"),
-    tags: str = Form(""),
-    password: str = Form(None),
-    keyfile: UploadFile = File(None)
-):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-
-    # Check duplicate
-    cur.execute("SELECT id FROM servers WHERE host=? OR name=?", (host, name))
-    existing = cur.fetchone()
-    if existing:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Server with same host or name already exists.")
-
+@app.route('/api/servers/add', methods=['POST'])
+def add_server():
+    name = request.form.get('name')
+    host = request.form.get('host')
+    username = request.form.get('username')
+    os_type = request.form.get('os_type', 'ubuntu')
+    tags = request.form.get('tags')
+    password = request.form.get('password')
+    keyfile = request.files.get('keyfile')
     keyfile_path = None
     if keyfile:
-        filename = f"{name}_{int(datetime.datetime.utcnow().timestamp())}.pem"
-        keyfile_path = os.path.join(KEY_DIR, filename)
-        with open(keyfile_path, "wb") as f:
-            f.write(await keyfile.read())
-        os.chmod(keyfile_path, 0o600)
+        filename = secure_filename(keyfile.filename)
+        keyfile_path = os.path.join(UPLOAD_FOLDER, filename)
+        keyfile.save(keyfile_path)
 
-    pwd_enc = fernet.encrypt(password.encode()).decode() if password else None
+    created_at = datetime.datetime.now().isoformat()
 
-    cur.execute("""INSERT INTO servers (name, host, username, password_enc, keyfile_path, tags, os, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (name, host, username, pwd_enc, keyfile_path, tags, os_type, datetime.datetime.utcnow().isoformat()))
-    conn.commit()
-    server_id = cur.lastrowid
-    conn.close()
-
-    return {"status": "ok", "server_id": server_id}
-
-# ✅ List all servers
-@app.get("/api/servers/list")
-def list_servers(tag: str = None):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    if tag:
-        cur.execute("SELECT id, name, host, username, keyfile_path, created_at, os, tags FROM servers WHERE tags LIKE ? ORDER BY id DESC", ('%' + tag + '%',))
-    else:
-        cur.execute("SELECT id, name, host, username, keyfile_path, created_at, os, tags FROM servers ORDER BY id DESC")
-    rows = cur.fetchall()
-    conn.close()
-    res = []
-    for r in rows:
-        res.append({
-            "id": r[0], "name": r[1], "host": r[2], "username": r[3],
-            "keyfile_path": r[4], "created_at": r[5],
-            "os": r[6], "tags": r[7]
-        })
-    return res
-
-# ✅ Delete a server
-@app.delete("/api/servers/delete/{server_id}")
-def delete_server(server_id: int):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT keyfile_path FROM servers WHERE id=?", (server_id,))
-    row = cur.fetchone()
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Server not found")
-
-    keyfile_path = row[0]
-    if keyfile_path and os.path.exists(keyfile_path):
-        try: os.remove(keyfile_path)
-        except Exception: pass
-
-    cur.execute("DELETE FROM runs WHERE server_id=?", (server_id,))
-    cur.execute("DELETE FROM servers WHERE id=?", (server_id,))
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO servers (name, host, username, password_enc, keyfile_path, os, tags, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (name, host, username, password, keyfile_path, os_type, tags, created_at)
+    )
     conn.commit()
     conn.close()
-    return {"status": "ok", "message": f"Server {server_id} deleted successfully."}
+    return jsonify({"success": True})
 
-# ✅ Run commands
-@app.post("/api/run")
-def run_command(payload: RunCommand):
+@app.route('/api/servers/delete/<int:id>', methods=['DELETE'])
+def delete_server(id):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM servers WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/servers/update_tags/<int:id>', methods=['POST'])
+def update_tags(id):
+    tags = request.json.get('tags', '')
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE servers SET tags=? WHERE id=?", (tags, id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+# --- Run Command ---
+@app.route('/api/run', methods=['POST'])
+def run_commands():
+    data = request.json
+    server_ids = data.get('server_ids', [])
+    commands = data.get('commands', [])
+    if not server_ids or not commands:
+        return jsonify({"error": "Missing server_ids or commands"}), 400
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    placeholders = ','.join(['?']*len(server_ids))
+    c.execute(f"SELECT * FROM servers WHERE id IN ({placeholders})", server_ids)
+    servers = [dict(row) for row in c.fetchall()]
+    conn.close()
+
     results = []
-    for sid in payload.server_ids:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("SELECT host, username, password_enc, keyfile_path, os FROM servers WHERE id=?", (sid,))
-        row = cur.fetchone()
-        conn.close()
-        if not row:
-            results.append({"server_id": sid, "status": "error", "output": "Server not found"})
-            continue
-
-        host, username, password_enc, keyfile_path, server_os = row
-        password = fernet.decrypt(password_enc.encode()).decode() if password_enc else None
-
-        server_output = ""
-        server_status = "ok"
-        for cmd_obj in payload.commands:
-            if not isinstance(cmd_obj, dict) or "os" not in cmd_obj or "cmd" not in cmd_obj:
+    for server in servers:
+        for cmd_obj in commands:
+            if cmd_obj['os'] != server['os']:
                 continue
-            if cmd_obj["os"] != server_os:
-                continue
-            status, output = run_ssh_command(host, username, password=password, keyfile=keyfile_path, command=cmd_obj["cmd"], timeout=payload.timeout)
-            server_output += f"$ {cmd_obj['cmd']}\n{output}\n"
-            if status != "ok": server_status = status
+            status = "failed"
+            output = ""
+            try:
+                ssh = paramiko.SSHClient()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                if server['keyfile_path']:
+                    ssh.connect(server['host'], username=server['username'], key_filename=server['keyfile_path'])
+                else:
+                    ssh.connect(server['host'], username=server['username'], password=server['password_enc'])
+                stdin, stdout, stderr = ssh.exec_command(cmd_obj['cmd'])
+                out = stdout.read().decode()
+                err = stderr.read().decode()
+                output = f"$ {cmd_obj['cmd']}\n\nOUT:\n{out}\nERR:\n{err}"
+                status = "ok" if not err.strip() else "failed"
+                ssh.close()
+            except Exception as e:
+                output = str(e)
+                status = "failed"
 
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("""INSERT INTO runs (server_id, command, output, status, created_at)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (sid, json.dumps(payload.commands), server_output, server_status, datetime.datetime.utcnow().isoformat()))
-        conn.commit()
-        conn.close()
+            # Store in DB
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("INSERT INTO runs (server_id, command, status, output, created_at) VALUES (?,?,?,?,?)",
+                      (server['id'], cmd_obj['cmd'], status, output, datetime.datetime.now().isoformat()))
+            conn.commit()
+            conn.close()
 
-        results.append({"server_id": sid, "status": server_status, "output": server_output})
-    return results
+            results.append({
+                "server_id": server['id'],
+                "server_name": server['name'],
+                "command": cmd_obj['cmd'],
+                "status": status,
+                "output": output
+            })
 
-# ✅ List run history
-@app.get("/api/runs")
-def list_runs(limit: int = 50):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT id, server_id, command, status, created_at FROM runs ORDER BY id DESC LIMIT ?", (limit,))
-    rows = cur.fetchall()
+    return jsonify(results)
+
+# --- Job History ---
+@app.route('/api/runs')
+def get_runs():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM runs ORDER BY id DESC")
+    runs = [dict(row) for row in c.fetchall()]
     conn.close()
-    res = []
-    for r in rows:
-        res.append({"id": r[0], "server_id": r[1], "command": r[2], "status": r[3], "created_at": r[4]})
-    return res
+    return jsonify(runs)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
