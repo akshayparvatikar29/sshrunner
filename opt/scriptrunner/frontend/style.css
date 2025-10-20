@@ -1,0 +1,95 @@
+body {
+  font-family: "Segoe UI", Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: #f5f6fa;
+  color: #333;
+}
+
+header {
+  background: #2f3542;
+  color: white;
+  padding: 15px 30px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.container {
+  padding: 30px;
+  max-width: 1100px;
+  margin: auto;
+}
+
+.section {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  margin-bottom: 30px;
+}
+
+h2 {
+  border-bottom: 2px solid #eee;
+  padding-bottom: 6px;
+  margin-bottom: 15px;
+  color: #222;
+}
+
+input, select, button, textarea {
+  padding: 8px;
+  margin: 5px 0;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+button {
+  cursor: pointer;
+  background: #1e90ff;
+  color: white;
+  border: none;
+  transition: 0.2s;
+}
+
+button:hover {
+  background: #0074e4;
+}
+
+.delete-btn {
+  background: #e74c3c;
+}
+.delete-btn:hover {
+  background: #c0392b;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  font-size: 14px;
+}
+tr:nth-child(even) {
+  background: #f9f9f9;
+}
+.status-success {
+  color: #27ae60;
+  font-weight: bold;
+}
+.status-fail {
+  color: #e74c3c;
+  font-weight: bold;
+}
+
+#output {
+  background: #111;
+  color: #0f0;
+  padding: 15px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  font-family: monospace;
+  max-height: 400px;
+  overflow-y: auto;
+}
