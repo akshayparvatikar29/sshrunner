@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+paramiko
+pypsrp      # for Windows PowerShell (optional)
+sqlalchemy
+alembic
+python-dotenv
+pydantic
+cryptography
+jinja2
+aiofiles
+python-multipart
+requests
