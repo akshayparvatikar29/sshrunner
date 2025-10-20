@@ -1,0 +1,19 @@
+/opt/scriptrunner/
+├─ app.py               # Flask backend
+├─ scriptrunner.db      # SQLite DB
+├─ frontend/
+│  └─ index.html        # Frontend HTML
+├─ static/
+│  └─ style.css         # Optional CSS
+├─ uploads/             # For keyfiles
+└─ .venv/   
+
+Activate your virtualenv:
+
+source .venv/bin/activate
+pip install flask flask-cors paramiko
+
+Start the app:
+python3 app.py
+
+
