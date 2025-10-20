@@ -23,4 +23,28 @@ cd /opt/scriptrunner
 source .venv/bin/activate
 nohup python3 app.py > flask.log 2>&1 &
 
+1️⃣ Combine commands in a single SSH execution
+Instead of sending multiple commands separately, combine them using && or ;:
+
+[
+  {"os":"ubuntu","cmd":"cd /opt/scriptrunner && ./installapache.sh"}
+]
+
+
+&& ensures the second command runs only if the first succeeds.
+; will run the second command regardless of success of the first:
+
+[
+  {"os":"ubuntu","cmd":"cd /opt/scriptrunner; ./installapache.sh"}
+]
+
+2️⃣ Use full path
+
+Instead of changing directories, just call the script with its full path:
+
+[
+  {"os":"ubuntu","cmd":"/opt/scriptrunner/installapache.sh"}
+]
+
+
 
