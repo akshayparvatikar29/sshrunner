@@ -5,7 +5,7 @@
 <title>ScriptRunner</title>
 <link rel="stylesheet" href="/static/style.css" />
 <style>
-body { font-family: Arial, sans-serif; margin: 20px; }
+body { font-family: Arial; margin: 20px; }
 h2 { color: #333; }
 .section { margin-bottom: 30px; }
 input, select, button, textarea { margin: 5px 0; padding: 6px; border: 1px solid #aaa; border-radius: 5px; }
@@ -21,13 +21,13 @@ tr:nth-child(even) { background: #f9f9f9; }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 .filter-input { margin-left: 10px; }
+pre { background:#eee; padding:10px; border-radius:5px; max-height:300px; overflow:auto; }
 </style>
 </head>
 <body>
 
 <h1>ScriptRunner</h1>
 
-<!-- ========== Servers Section ========== -->
 <div class="section">
 <h2>Servers</h2>
 <form id="serverForm">
@@ -58,26 +58,22 @@ tr:nth-child(even) { background: #f9f9f9; }
 </table>
 </div>
 
-<!-- ========== Selected Servers ========== -->
 <div class="section">
 <h2>Selected Servers</h2>
 <ul id="selectedServers"></ul>
 </div>
 
-<!-- ========== Tabs for Execute / History ========== -->
 <div class="tabs">
   <div class="tab active" data-tab="execute">Execute Command</div>
   <div class="tab" data-tab="history">Job History</div>
 </div>
 
-<!-- ========== Tab Contents ========== -->
 <div id="execute" class="tab-content active">
   <div class="section">
     <h2>Run Command</h2>
     <textarea id="commands" rows="6" cols="80">[{"os":"ubuntu","cmd":"whoami"},{"os":"amazon","cmd":"whoami"}]</textarea><br />
     <button id="runBtn" class="btn">Execute</button>
   </div>
-
   <div class="section">
     <h2>Output</h2>
     <pre id="output"></pre>
@@ -89,9 +85,7 @@ tr:nth-child(even) { background: #f9f9f9; }
     <h2>Job History</h2>
     <table id="historyTable">
       <thead>
-        <tr>
-          <th>Server</th><th>Host</th><th>OS</th><th>Command</th><th>Status</th><th>Timestamp</th>
-        </tr>
+        <tr><th>Server</th><th>Host</th><th>OS</th><th>Command</th><th>Status</th><th>Timestamp</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -99,12 +93,12 @@ tr:nth-child(even) { background: #f9f9f9; }
 </div>
 
 <script>
-const serverTableBody = document.querySelector("#serverTable tbody");
-const selectedServersList = document.getElementById("selectedServers");
-const historyTableBody = document.querySelector("#historyTable tbody");
-let servers = [], selectedServers = [];
+let servers=[], selectedServers=[];
+const serverTableBody=document.querySelector("#serverTable tbody");
+const selectedServersList=document.getElementById("selectedServers");
+const historyTableBody=document.querySelector("#historyTable tbody");
 
-// --- Tabs ---
+// Tabs
 document.querySelectorAll(".tab").forEach(tab=>{
   tab.addEventListener("click", ()=>{
     document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
@@ -115,126 +109,115 @@ document.querySelectorAll(".tab").forEach(tab=>{
   });
 });
 
-// --- Fetch Servers ---
+// Fetch Servers
 async function fetchServers(){
-    const res = await fetch("/api/servers/list");
-    servers = await res.json();
-    renderServers();
+  const res=await fetch("/api/servers/list");
+  servers=await res.json();
+  renderServers();
 }
-
-// --- Render Servers with Tag Filter ---
 function renderServers(){
-    const filterTag = document.getElementById("tagFilter").value.trim().toLowerCase();
-    serverTableBody.innerHTML = "";
-    servers.filter(s=>!filterTag || (s.tags && s.tags.toLowerCase().includes(filterTag)))
-    .forEach((s)=>{
-        const tr=document.createElement("tr");
-        tr.innerHTML=`<td>${s.id}</td><td>${s.name}</td><td>${s.host}</td><td>${s.username}</td><td>${s.os}</td>
-        <td>${s.tags||""}</td>
-        <td>${new Date(s.created_at).toLocaleString()}</td>
-        <td>
-        <button onclick="selectServer(${s.id})">Select</button>
-        <button onclick="editTags(${s.id},'${s.tags||""}')">Edit Tags</button>
-        <button class="delete-btn" onclick="deleteServer(${s.id},'${s.name}')">Delete</button>
-        </td>`;
-        serverTableBody.appendChild(tr);
-    });
+  const filterTag=document.getElementById("tagFilter").value.trim().toLowerCase();
+  serverTableBody.innerHTML="";
+  servers.filter(s=>!filterTag||(s.tags&&s.tags.toLowerCase().includes(filterTag))).forEach(s=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${s.id}</td><td>${s.name}</td><td>${s.host}</td><td>${s.username}</td><td>${s.os}</td>
+    <td>${s.tags||""}</td><td>${new Date(s.created_at).toLocaleString()}</td>
+    <td>
+      <button onclick="selectServer(${s.id})">Select</button>
+      <button onclick="editTags(${s.id},'${s.tags||""}')">Edit Tags</button>
+      <button class="delete-btn" onclick="deleteServer(${s.id},'${s.name}')">Delete</button>
+    </td>`;
+    serverTableBody.appendChild(tr);
+  });
 }
 
-// --- Edit Tags ---
-async function editTags(serverId,currentTags){
-    const newTags = prompt("Edit tags (comma separated):", currentTags);
-    if(newTags===null) return; // Cancelled
-    const res = await fetch(`/api/servers/update_tags/${serverId}`, {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({tags:newTags})
-    });
-    if(res.ok){ fetchServers(); }
-    else { const err = await res.json(); alert(err.detail || "Error updating tags."); }
+// Edit Tags
+async function editTags(id,currentTags){
+  const newTags=prompt("Edit tags (comma separated):",currentTags);
+  if(newTags===null) return;
+  const res=await fetch(`/api/servers/update_tags/${id}`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({tags:newTags})
+  });
+  if(res.ok) fetchServers();
 }
 
-// --- Tag Filter ---
+// Tag filter
 document.getElementById("tagFilter").addEventListener("input", renderServers);
 
-// --- Add Server ---
-document.getElementById("serverForm").addEventListener("submit", async e=>{
-    e.preventDefault();
-    const formData=new FormData();
-    formData.append("name",document.getElementById("name").value);
-    formData.append("host",document.getElementById("host").value);
-    formData.append("username",document.getElementById("username").value);
-    formData.append("os_type",document.getElementById("os_type").value);
-    formData.append("tags",document.getElementById("tags").value);
-    formData.append("password",document.getElementById("password").value);
-    const keyfile=document.getElementById("keyfile").files[0];
-    if(keyfile) formData.append("keyfile",keyfile);
-    const res=await fetch("/api/servers/add",{method:"POST", body:formData});
-    if(res.ok){ alert("Server added successfully!"); e.target.reset(); fetchServers(); }
-    else { const err=await res.json(); alert(err.detail || "Error adding server."); }
+// Add server
+document.getElementById("serverForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const formData=new FormData();
+  formData.append("name",document.getElementById("name").value);
+  formData.append("host",document.getElementById("host").value);
+  formData.append("username",document.getElementById("username").value);
+  formData.append("os_type",document.getElementById("os_type").value);
+  formData.append("tags",document.getElementById("tags").value);
+  formData.append("password",document.getElementById("password").value);
+  const keyfile=document.getElementById("keyfile").files[0];
+  if(keyfile) formData.append("keyfile",keyfile);
+  const res=await fetch("/api/servers/add",{method:"POST",body:formData});
+  if(res.ok){ alert("Server added!"); e.target.reset(); fetchServers(); }
+  else { const err=await res.json(); alert(err.detail||"Error"); }
 });
 
-// --- Select Server ---
+// Select Server
 function selectServer(id){
-    const server=servers.find(s=>s.id===id);
-    if(!server) return;
-    if(selectedServers.some(s=>s.id===id)){ alert("Server already selected!"); return; }
-    selectedServers.push(server);
-    renderSelectedServers();
+  const server=servers.find(s=>s.id===id);
+  if(!server||selectedServers.some(s=>s.id===id)){ alert("Already selected!"); return; }
+  selectedServers.push(server); renderSelectedServers();
 }
-
-// --- Render Selected Servers ---
 function renderSelectedServers(){
-    selectedServersList.innerHTML="";
-    selectedServers.forEach((s,idx)=>{
-        const li=document.createElement("li");
-        li.textContent=`${s.name} (${s.host})`;
-        const delBtn=document.createElement("button"); delBtn.textContent="Remove";
-        delBtn.onclick=()=>{ selectedServers.splice(idx,1); renderSelectedServers(); }
-        li.appendChild(delBtn);
-        selectedServersList.appendChild(li);
-    });
+  selectedServersList.innerHTML="";
+  selectedServers.forEach((s,idx)=>{
+    const li=document.createElement("li");
+    li.textContent=`${s.name} (${s.host})`;
+    const delBtn=document.createElement("button"); delBtn.textContent="Remove";
+    delBtn.onclick=()=>{ selectedServers.splice(idx,1); renderSelectedServers(); }
+    li.appendChild(delBtn); selectedServersList.appendChild(li);
+  });
 }
 
-// --- Delete Server ---
+// Delete server
 async function deleteServer(id,name){
-    if(!confirm(`Delete server "${name}"?`)) return;
-    const res=await fetch(`/api/servers/delete/${id}`,{method:"DELETE"});
-    if(res.ok){ alert(`Server "${name}" deleted.`); selectedServers=selectedServers.filter(s=>s.id!==id); renderSelectedServers(); fetchServers(); }
-    else { const err=await res.json(); alert(err.detail || "Error deleting server."); }
+  if(!confirm(`Delete "${name}"?`)) return;
+  const res=await fetch(`/api/servers/delete/${id}`,{method:"DELETE"});
+  if(res.ok){ selectedServers=selectedServers.filter(s=>s.id!==id); renderSelectedServers(); fetchServers(); }
 }
 
-// --- Run Command ---
-document.getElementById("runBtn").addEventListener("click", async ()=>{
-    let commandsText=document.getElementById("commands").value;
-    let commands;
-    try{ commands=JSON.parse(commandsText); } catch(e){ return alert("Invalid JSON!"); }
-    if(!Array.isArray(commands) || commands.length===0) return alert("Enter at least one command!");
-    if(selectedServers.length===0) return alert("Select at least one server!");
-    const payload={server_ids:selectedServers.map(s=>s.id), commands};
-    const res=await fetch("/api/run",{method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
-    const data=await res.json();
-    document.getElementById("output").textContent=JSON.stringify(data,null,2);
+// Run command
+document.getElementById("runBtn").addEventListener("click",async ()=>{
+  let cmds;
+  try{ cmds=JSON.parse(document.getElementById("commands").value); }
+  catch(e){ return alert("Invalid JSON!"); }
+  if(!Array.isArray(cmds)||cmds.length===0) return alert("Enter command!");
+  if(selectedServers.length===0) return alert("Select servers!");
+
+  const payload={server_ids:selectedServers.map(s=>s.id), commands:cmds};
+  const res=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const data=await res.json();
+  document.getElementById("output").textContent=JSON.stringify(data,null,2);
 });
 
-// --- Fetch Job History ---
+// Fetch history
 async function fetchHistory(){
-    const res=await fetch("/api/runs");
-    const runs=await res.json();
-    historyTableBody.innerHTML="";
-    for(const r of runs){
-        const server=servers.find(s=>s.id===r.server_id);
-        if(!server) continue;
-        const tr=document.createElement("tr");
-        tr.innerHTML=`<td>${server.name}</td><td>${server.host}</td><td>${server.os}</td><td>${r.command}</td>
-        <td>${r.status==="ok"?"Success":"Failure"}</td><td>${new Date(r.created_at).toLocaleString()}</td>`;
-        historyTableBody.appendChild(tr);
-    }
+  const res=await fetch("/api/runs");
+  const runs=await res.json();
+  historyTableBody.innerHTML="";
+  for(const r of runs){
+    const server=servers.find(s=>s.id===r.server_id);
+    if(!server) continue;
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${server.name}</td><td>${server.host}</td><td>${server.os}</td><td>${r.command}</td>
+    <td>${r.status==="ok"?"Success":"Failure"}</td><td>${new Date(r.created_at).toLocaleString()}</td>`;
+    historyTableBody.appendChild(tr);
+  }
 }
 
-// --- Initial load ---
+// Initial load
 fetchServers();
 </script>
-
 </body>
 </html>
