@@ -16,4 +16,11 @@ pip install flask flask-cors paramiko
 Start the app:
 python3 app.py
 
+Use tmux or screen (simpler, temporary)
+run application in background:
+
+cd /opt/scriptrunner
+source .venv/bin/activate
+nohup python3 app.py > flask.log 2>&1 &
+
 
