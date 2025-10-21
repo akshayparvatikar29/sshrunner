@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ScriptRunner</title>
+<link rel="stylesheet" href="/static/style.css" />
+<style>
+/* General */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    background: #f5f6fa;
+    color: #333;
+}
+h1 {
+    text-align: center;
+    margin: 20px 0;
+    color: #2f3640;
+}
+.section {
+    background: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+input, select, button, textarea {
+    margin: 5px 0;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+}
+button {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    transition: 0.3s;
+}
+button:hover {
+    background-color: #45a049;
+}
+.delete-btn {
+    background: #e84118;
+    color: #fff;
+}
+.delete-btn:hover {
+    background: #c23616;
+}
+.btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 10px;
+}
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+th {
+    background: #f1f2f6;
+}
+tr:nth-child(even) { background: #f9f9f9; }
+pre {
+    background: #f0f0f0;
+    padding: 15px;
+    border-radius: 6px;
+    max-height: 300px;
+    overflow: auto;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    border-bottom: 2px solid #ccc;
+    margin-bottom: 15px;
+}
+.tab {
+    padding: 10px 25px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    margin-right: 5px;
+    background: #e1e2e6;
+    transition: 0.3s;
+}
+.tab.active {
+    background: #fff;
+    font-weight: bold;
+    border-color: #ccc #ccc #fff #ccc;
+}
+.tab-content {
+    display: none;
+}
+.tab-content.active {
+    display: block;
+}
+
+/* Selected servers */
+#selectedServers li {
+    margin: 5px 0;
+    list-style: none;
+}
+#selectedServers li button {
+    margin-left: 10px;
+    padding: 2px 6px;
+    font-size: 12px;
+    background: #e1b12c;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+}
+#selectedServers li button:hover {
+    background: #fbc531;
+}
+
+/* Ask AI tab */
+#askAI textarea {
+    width: 100%;
+    height: 120px;
+    resize: vertical;
+}
+#askAI .submit-btn {
+    background: #0097e6;
+}
+#askAI .submit-btn:hover {
+    background: #0984e3;
+}
+</style>
+</head>
+<body>
+
+<h1>ScriptRunner</h1>
+
+<div class="section">
+<h2>Servers</h2>
+<form id="serverForm">
+  <input type="text" id="name" placeholder="Server Name" required />
+  <input type="text" id="host" placeholder="Host/IP" required />
+  <input type="text" id="username" placeholder="Username" required />
+  <select id="os_type">
+    <option value="ubuntu">Ubuntu</option>
+    <option value="amazon">Amazon Linux</option>
+    <option value="rhel">RHEL</option>
+  </select>
+  <input type="text" id="tags" placeholder="Tags (comma separated)" />
+  <input type="password" id="password" placeholder="Password" />
+  <input type="file" id="keyfile" />
+  <button type="submit" class="btn">Add Server</button>
+</form>
+
+<label>Filter by Tag:</label>
+<input type="text" id="tagFilter" class="filter-input" placeholder="Enter tag to filter" />
+
+<table id="serverTable">
+<thead>
+<tr>
+<th>ID</th><th>Name</th><th>Host</th><th>Username</th><th>OS</th><th>Tags</th><th>Created At</th><th>Actions</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+
+<div class="section">
+<h2>Selected Servers</h2>
+<ul id="selectedServers"></ul>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="execute">Execute Command</div>
+  <div class="tab" data-tab="history">Job History</div>
+  <div class="tab" data-tab="askAI">Ask AI</div>
+</div>
+
+<div id="execute" class="tab-content active">
+  <div class="section">
+    <h2>Run Command</h2>
+    <textarea id="commands" rows="6">[{"os":"ubuntu","cmd":"whoami"},{"os":"amazon","cmd":"whoami"}]</textarea><br />
+    <button id="runBtn" class="btn">Execute</button>
+  </div>
+  <div class="section">
+    <h2>Output</h2>
+    <pre id="output"></pre>
+  </div>
+</div>
+
+<div id="history" class="tab-content">
+  <div class="section">
+    <h2>Job History</h2>
+    <table id="historyTable">
+      <thead>
+        <tr><th>Server</th><th>Host</th><th>OS</th><th>Command</th><th>Status</th><th>Timestamp</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="askAI" class="tab-content">
+  <div class="section">
+    <h2>Ask AI</h2>
+    <textarea id="aiQuery" placeholder="Enter your query..."></textarea><br />
+    <button id="submitAI" class="submit-btn btn">Submit</button>
+    <pre id="aiOutput"></pre>
+  </div>
+</div>
+
+<script>
+let servers=[], selectedServers=[];
+const serverTableBody=document.querySelector("#serverTable tbody");
+const selectedServersList=document.getElementById("selectedServers");
+const historyTableBody=document.querySelector("#historyTable tbody");
+
+// Tabs
+document.querySelectorAll(".tab").forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c=>c.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById(tab.dataset.tab).classList.add("active");
+    if(tab.dataset.tab==="history") fetchHistory();
+  });
+});
+
+// Fetch Servers
+async function fetchServers(){
+  const res=await fetch("/api/servers/list");
+  servers=await res.json();
+  renderServers();
+}
+function renderServers(){
+  const filterTag=document.getElementById("tagFilter").value.trim().toLowerCase();
+  serverTableBody.innerHTML="";
+  servers.filter(s=>!filterTag||(s.tags&&s.tags.toLowerCase().includes(filterTag))).forEach(s=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${s.id}</td><td>${s.name}</td><td>${s.host}</td><td>${s.username}</td><td>${s.os}</td>
+    <td>${s.tags||""}</td><td>${new Date(s.created_at).toLocaleString()}</td>
+    <td>
+      <button onclick="selectServer(${s.id})">Select</button>
+      <button onclick="editTags(${s.id},'${s.tags||""}')">Edit Tags</button>
+      <button class="delete-btn" onclick="deleteServer(${s.id},'${s.name}')">Delete</button>
+    </td>`;
+    serverTableBody.appendChild(tr);
+  });
+}
+
+// Edit Tags
+async function editTags(id,currentTags){
+  const newTags=prompt("Edit tags (comma separated):",currentTags);
+  if(newTags===null) return;
+  const res=await fetch(`/api/servers/update_tags/${id}`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({tags:newTags})
+  });
+  if(res.ok) fetchServers();
+}
+
+// Tag filter
+document.getElementById("tagFilter").addEventListener("input", renderServers);
+
+// Add server
+document.getElementById("serverForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const formData=new FormData();
+  formData.append("name",document.getElementById("name").value);
+  formData.append("host",document.getElementById("host").value);
+  formData.append("username",document.getElementById("username").value);
+  formData.append("os_type",document.getElementById("os_type").value);
+  formData.append("tags",document.getElementById("tags").value);
+  formData.append("password",document.getElementById("password").value);
+  const keyfile=document.getElementById("keyfile").files[0];
+  if(keyfile) formData.append("keyfile",keyfile);
+  const res=await fetch("/api/servers/add",{method:"POST",body:formData});
+  if(res.ok){ alert("Server added!"); e.target.reset(); fetchServers(); }
+  else { const err=await res.json(); alert(err.detail||"Error"); }
+});
+
+// Select Server
+function selectServer(id){
+  const server=servers.find(s=>s.id===id);
+  if(!server||selectedServers.some(s=>s.id===id)){ alert("Already selected!"); return; }
+  selectedServers.push(server); renderSelectedServers();
+}
+function renderSelectedServers(){
+  selectedServersList.innerHTML="";
+  selectedServers.forEach((s,idx)=>{
+    const li=document.createElement("li");
+    li.textContent=`${s.name} (${s.host})`;
+    const delBtn=document.createElement("button"); delBtn.textContent="Remove";
+    delBtn.onclick=()=>{ selectedServers.splice(idx,1); renderSelectedServers(); }
+    li.appendChild(delBtn); selectedServersList.appendChild(li);
+  });
+}
+
+// Delete server
+async function deleteServer(id,name){
+  if(!confirm(`Delete "${name}"?`)) return;
+  const res=await fetch(`/api/servers/delete/${id}`,{method:"DELETE"});
+  if(res.ok){ selectedServers=selectedServers.filter(s=>s.id!==id); renderSelectedServers(); fetchServers(); }
+}
+
+// Run command
+document.getElementById("runBtn").addEventListener("click",async ()=>{
+  let cmds;
+  try{ cmds=JSON.parse(document.getElementById("commands").value); }
+  catch(e){ return alert("Invalid JSON!"); }
+  if(!Array.isArray(cmds)||cmds.length===0) return alert("Enter command!");
+  if(selectedServers.length===0) return alert("Select servers!");
+
+  const payload={server_ids:selectedServers.map(s=>s.id), commands:cmds};
+  const res=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const data=await res.json();
+  document.getElementById("output").textContent=JSON.stringify(data,null,2);
+});
+
+// Fetch history
+async function fetchHistory(){
+  const res=await fetch("/api/runs");
+  const runs=await res.json();
+  historyTableBody.innerHTML="";
+  for(const r of runs){
+    const server=servers.find(s=>s.id===r.server_id);
+    if(!server) continue;
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${server.name}</td><td>${server.host}</td><td>${server.os}</td><td>${r.command}</td>
+    <td>${r.status==="ok"?"Success":"Failure"}</td><td>${new Date(r.created_at).toLocaleString()}</td>`;
+    historyTableBody.appendChild(tr);
+  }
+}
+
+// Ask AI
+document.getElementById("submitAI").addEventListener("click",()=>{
+  const query=document.getElementById("aiQuery").value.trim();
+  if(!query){ alert("Enter a query!"); return; }
+  document.getElementById("aiOutput").textContent="GPT volume exceeded";
+});
+
+// Initial load
+fetchServers();
+</script>
+</body>
+</html>
